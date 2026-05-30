@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # DATA STORAGE LAYER: PostgreSQL
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: banking_postgres
+    environment:
+      POSTGRES_USER: banking_user
+      POSTGRES_PASSWORD: banking_secure_password
+      POSTGRES_DB: banking_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-infra/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banking_worker -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - banking_network
+
+  # ---------------------------------------------------------------------------
+  # STREAMING PLATFORM: Redpanda (Kafka Wire-Protocol Compatible)
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.2
+    container_name: banking_redpanda
+    command:
+      - redpanda start
+      - --smp 1
+      - --memory 1G
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:29092,external://0.0.0.0:9092
+      - --advertise-kafka-addr internal://redpanda:29092,external://localhost:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "--brokers", "127.0.0.1:29092"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - banking_network
+
+  # Redpanda Console UI (Replaces the heavy Kafka UI tools)
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.5
+    container_name: banking_redpanda_console
+#    entrypoint: /bin/sh -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml && /app/console -config.filepath=/tmp/config.yml"
+    environment:
+      - KAFKA_BROKERS=redpanda:29092
+#      CONFIG_FILE: /tmp/config.yml
+#      CONSOLE_CONFIG_FILE: |
+#        kafka:
+#          brokers: ["redpanda:29092"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - banking_network
+
+  # ---------------------------------------------------------------------------
+  # INFRASTRUCTURE AUTOMATION CONTROL CONTAINER
+  # ---------------------------------------------------------------------------
+  infra-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v25.1.2
+    container_name: banking_infra_init
+    volumes:
+      - ./init-infra/init.sh:/tmp/init.sh:ro
+    entrypoint: [ "/bin/sh", "/tmp/init.sh" ]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - banking_network
+
+# ---------------------------------------------------------------------------
+# NETWORKS & PERSISTENT VOLUMES DEFINITIONS
+# ---------------------------------------------------------------------------
+networks:
+  banking_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redpanda_data:
+    driver: local
+  # Shared data lake storage between Pipeline Container and Spark Batch Engine
+  banking_data_lake:
+    driver: local
