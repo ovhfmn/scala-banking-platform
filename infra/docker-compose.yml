@@ -85,6 +85,27 @@ services:
     networks:
       - banking_network
 
+  # ---------------------------------------------------------------------------
+  # CORE API SERVICE (Scala 3)
+  # ---------------------------------------------------------------------------
+  http-service:
+    build:
+      context: ../services/scala-http-service
+      dockerfile: Dockerfile
+    container_name: banking_http_service
+    ports:
+      - "8081:8080" # Exposed out to host port 8081 to prevent overlapping with Console
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - DATABASE_URL=jdbc:postgresql://postgres:5432/banking_db
+      - DB_USER=banking_user
+      - DB_PASSWORD=banking_secure_password
+    depends_on:
+      infra-init:
+        condition: service_completed_successfully
+    networks:
+      - banking_network
+
 # ---------------------------------------------------------------------------
 # NETWORKS & PERSISTENT VOLUMES DEFINITIONS
 # ---------------------------------------------------------------------------
