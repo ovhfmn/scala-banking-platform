@@ -17,7 +17,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./init-infra/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U banking_worker -d postgres"]
+      test: ["CMD-SHELL", "pg_isready -U banking_user -d banking_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -31,9 +31,12 @@ services:
     image: docker.redpanda.com/redpandadata/redpanda:v25.1.2
     container_name: banking_redpanda
     command:
-      - redpanda start
-      - --smp 1
-      - --memory 1G
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --memory
+      - 1G
       - --overprovisioned
       - --kafka-addr internal://0.0.0.0:29092,external://0.0.0.0:9092
       - --advertise-kafka-addr internal://redpanda:29092,external://localhost:9092
@@ -53,13 +56,8 @@ services:
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:v2.4.5
     container_name: banking_redpanda_console
-#    entrypoint: /bin/sh -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml && /app/console -config.filepath=/tmp/config.yml"
     environment:
       - KAFKA_BROKERS=redpanda:29092
-#      CONFIG_FILE: /tmp/config.yml
-#      CONSOLE_CONFIG_FILE: |
-#        kafka:
-#          brokers: ["redpanda:29092"]
     ports:
       - "8080:8080"
     depends_on:
@@ -96,13 +94,36 @@ services:
     ports:
       - "8081:8080" # Exposed out to host port 8081 to prevent overlapping with Console
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+      - KAFKA_BROKER=redpanda:29092
       - DATABASE_URL=jdbc:postgresql://postgres:5432/banking_db
       - DB_USER=banking_user
       - DB_PASSWORD=banking_secure_password
     depends_on:
-      infra-init:
-        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - banking_network
+
+  # ---------------------------------------------------------------------------
+  # NOTIFIER CONSUMER ENGINE (Scala 3)
+  # ---------------------------------------------------------------------------
+  notifier:
+    build:
+      context: ../services/scala-notifier
+      dockerfile: Dockerfile
+    container_name: banking_notifier
+    environment:
+      - KAFKA_BROKER=redpanda:29092
+      - KAFKA_TOPIC=account-events
+      - CONCURRENCY=16
+    # FIXED: Simplified dependency graph
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - banking_network
 
