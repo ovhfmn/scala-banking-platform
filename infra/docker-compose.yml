@@ -91,6 +91,11 @@ services:
       context: ../services/scala-http-service
       dockerfile: Dockerfile
     container_name: banking_http_service
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     ports:
       - "8081:8080" # Exposed out to host port 8081 to prevent overlapping with Console
     environment:
@@ -127,6 +132,54 @@ services:
     networks:
       - banking_network
 
+  # ---------------------------------------------------------------------------
+  # PIPELINE (Scala 3)
+  # ---------------------------------------------------------------------------
+  data-pipeline:
+    build:
+      context: ../services/scala-data-pipeline
+      dockerfile: Dockerfile
+    container_name: banking_data_pipeline
+#    environment:
+#      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
+#      - KAFKA_GROUP_ID=data-pipeline
+#      - KAFKA_TOPIC=account-events
+#      - KAFKA_DLQ_TOPIC=account-events-dlq
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      infra-init:
+        condition: service_completed_successfully
+    volumes:
+      - banking_data_lake:/app/data
+    networks:
+      - banking_network
+
+  # ---------------------------------------------------------------------------
+  # TRANSACTION SIMULATOR (Scala 3)
+  # ---------------------------------------------------------------------------
+  transaction-simulator:
+    build:
+      context: ../services/scala-transaction-simulator
+      dockerfile: Dockerfile
+    container_name: banking_transaction_simulator
+    environment:
+      - ACCOUNT_SERVICE_URL=http://http-service:8080
+      - DATA_DIR=/app/data
+      - CHECKPOINT_DIR=/app/checkpoints
+      - CONTROL_PORT=9090
+      - PARALLELISM=4
+    ports:
+      - "9090:9090"
+    depends_on:
+      http-service:
+        condition: service_healthy
+    volumes:
+      - ./data/transactions:/app/data:ro
+      - transaction_driver_checkpoints:/app/checkpoints
+    networks:
+      - banking_network
+
 # ---------------------------------------------------------------------------
 # NETWORKS & PERSISTENT VOLUMES DEFINITIONS
 # ---------------------------------------------------------------------------
@@ -141,4 +194,6 @@ volumes:
     driver: local
   # Shared data lake storage between Pipeline Container and Spark Batch Engine
   banking_data_lake:
+    driver: local
+  transaction_driver_checkpoints:
     driver: local

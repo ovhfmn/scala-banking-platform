@@ -9,6 +9,7 @@ done
 
 echo "Redpanda is online. Creating banking topics..."
 rpk topic create account-events --brokers redpanda:29092 -p 3 -r 1
+rpk topic create account-events-dlq --brokers redpanda:29092 -p 3 -r 1
 
 
 echo "Infrastructure provisioning complete!"
