@@ -118,7 +118,8 @@ services:
     build:
       context: ../services/scala-notifier
       dockerfile: Dockerfile
-    container_name: banking_notifier
+    deploy:
+      replicas: 2
     environment:
       - KAFKA_BROKER=redpanda:29092
       - KAFKA_TOPIC=account-events
