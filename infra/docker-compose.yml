@@ -140,7 +140,8 @@ services:
     build:
       context: ../services/scala-data-pipeline
       dockerfile: Dockerfile
-    container_name: banking_data_pipeline
+    deploy:
+      replicas: 2
 #    environment:
 #      - KAFKA_BOOTSTRAP_SERVERS=redpanda:29092
 #      - KAFKA_GROUP_ID=data-pipeline
@@ -176,7 +177,7 @@ services:
       http-service:
         condition: service_healthy
     volumes:
-      - ./data/transactions:/app/data:ro
+      - ./data/transactions:/app/data
       - transaction_driver_checkpoints:/app/checkpoints
     networks:
       - banking_network
