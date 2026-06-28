@@ -164,6 +164,10 @@ services:
     build:
       context: ../services/scala-transaction-simulator
       dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1001}
+        GID: ${GID:-1001}
+    user: "${UID:-1001}:${GID:-1001}"
     container_name: banking_transaction_simulator
     environment:
       - ACCOUNT_SERVICE_URL=http://http-service:8080
